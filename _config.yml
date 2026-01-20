@@ -1,7 +1,7 @@
 title: Secure Infrastructure Blog
 description: Updates and announcements from the Secure Infrastructure project
 baseurl: "/secureinfra-blog"
-url: "https://nmelo.github.io/secureinfra-blog"
+url: "https://nmelo.github.io"
 theme: minima
 
 # Build settings

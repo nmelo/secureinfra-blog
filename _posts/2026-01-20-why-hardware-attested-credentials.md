@@ -35,7 +35,7 @@ NVIDIA BlueField DPUs implement [DICE](https://trustedcomputinggroup.org/work-gr
 
 **Complete visibility.** Every credential distribution is logged with the attestation state at that moment. "What credentials exist on this node?" has a definitive answer.
 
-The DPU runs independently with its own CPU, memory, and firmware. It provides the verification signal that automation needs without trusting the host to report its own state. Modern rootkits using io_uring [operate entirely outside the syscall layer](https://www.armosec.io/blog/io_uring-rootkit-bypasses-linux-security/), invisible to host-based security tools. The DPU sidesteps this problem entirely.
+The DPU runs independently with its own CPU, memory, and firmware. It provides the verification signal that automation needs without trusting the host to report its own state. Modern rootkits using io_uring [operate entirely outside the syscall layer](https://www.armosec.io/blog/io_uring-rootkit-bypasses-linux-security/), invisible to host-based security tools. The DPU provides an independent enforcement point: credentials don't reach hosts that fail attestation, regardless of what's running on the host.
 
 ## What Happens When Something Goes Wrong?
 

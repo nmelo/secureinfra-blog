@@ -5,46 +5,46 @@ date: 2026-01-20
 author: Beyond Identity
 ---
 
-When a GPU training server gets compromised, the first question is always: what credentials were on that box, and where could they go? SSH keys scattered across hundreds of nodes. Service accounts with static secrets. Nobody knows exactly what exists on which machines.
+SSH key distribution across hundreds of GPU nodes. Manual MUNGE token provisioning. Rotation fire drills when something expires. Credential management doesn't scale with your GPU fleet.
 
-Hardware-attested credentials eliminate this question. Credentials bound to verified hardware cannot be extracted or moved. The trust anchor is silicon, not software.
+Hardware-attested credentials automate the busywork. Credentials push automatically to verified infrastructure. Short-lived, so rotation happens by design. No keys sitting on servers indefinitely. Hardware trust handles verification so your team doesn't have to.
 
-## Why Do Traditional Approaches Fail?
+The side effect? When something goes wrong, you know exactly what credentials existed and where they could go.
 
-Traditional credential distribution has three fatal flaws: no hardware binding, no attestation gate, and no visibility.
+## Why Doesn't Manual Credential Management Scale?
 
-**No hardware binding.** Credentials work anywhere. Copy an SSH key to your laptop, it works from your laptop. Exfiltrate a service account token, it works from attacker infrastructure. The credential has no memory of where it belongs.
+Traditional credential distribution has three fatal flaws at scale: manual processes, no automation trigger, and no visibility.
 
-**No attestation gate.** Credentials get distributed regardless of target system state. Compromised kernel? Modified firmware? Tampered OS image? Traditional distribution doesn't ask. The credential flows, and you hope for the best.
+**Manual processes.** Every new node needs SSH keys distributed. Every rotation requires touching every machine. At 10 nodes, it's annoying. At 1,000 nodes, it's a full-time job. At 10,000 nodes, it doesn't work.
 
-**No visibility.** When incidents occur, you need to know what credentials existed on the compromised system. But credential inventories are incomplete. SSH keys get added and never removed. Service accounts get created for one-off tasks and forgotten.
+**No automation trigger.** How do you know a node is ready for credentials? You check manually, or you trust the provisioning system. Neither scales. Automation needs a verification signal: is this node ready to receive credentials?
 
-Identity solutions like MFA, SSO, and certificate-based access verify the user. They don't verify the target system. If a server has a kernel-level rootkit, your identity platform has no way to know. Your credentials work. The rootkit captures everything.
+**No visibility.** Credential inventories are incomplete. SSH keys get added and never removed. Service accounts get created for one-off tasks and forgotten. When you need to answer "what credentials exist on this node?", you're guessing.
 
-Modern rootkits using io_uring [operate entirely outside the syscall layer](https://www.armo.cloud/blog/io_uring-rootkit-bypasses-linux-security), invisible to host-based security tools. Software-based security cannot verify the platform it runs on. You cannot trust a host to report its own compromise.
+Identity solutions like MFA, SSO, and certificate-based access verify the user. They don't automate credential distribution to verified infrastructure. That's still a manual process.
 
-## How Does Hardware Attestation Change This?
+## How Does Hardware Attestation Enable Automation?
 
-Hardware attestation inverts the trust model. Verify host integrity before any credential reaches it. Credentials only flow to infrastructure that proves it hasn't been tampered with.
+Hardware attestation provides the verification signal that automation needs. The DPU cryptographically proves the node is ready to receive credentials. This enables just-in-time credential distribution without manual verification.
 
-NVIDIA BlueField DPUs implement [DICE](https://trustedcomputinggroup.org/work-groups/dice-architectures/) and [SPDM](https://www.dmtf.org/standards/spdm) for cryptographic attestation. The DPU proves its identity and reports firmware and software measurements, signed by hardware-protected keys.
+NVIDIA BlueField DPUs implement [DICE](https://trustedcomputinggroup.org/work-groups/dice-architectures/) and [SPDM](https://www.dmtf.org/standards/spdm) for cryptographic attestation. The DPU proves the node is in a known-good state, signed by hardware-protected keys.
 
-**Verify before distributing.** Query attestation state before any credential reaches a node. Only after verification passes does the credential flow.
+**Automate distribution.** When a node passes attestation, credentials push automatically. No manual verification. No scripts to maintain.
 
-**Bind credentials to hardware.** Private keys live in DPU hardware security modules. They sign operations but cannot be read out. Even root on the host cannot extract them.
+**Short-lived by default.** Certificates expire. No rotation fire drill because rotation is built in. Fresh credentials get created automatically when nodes re-attest.
 
-**Enforce below the OS.** The DPU sits between network and host, enforcing policy before traffic reaches the host CPU. A compromised kernel cannot bypass DPU-layer controls.
+**Complete visibility.** Every credential distribution is logged with the attestation state at that moment. "What credentials exist on this node?" has a definitive answer.
 
-The DPU runs independently with its own CPU, memory, and firmware. Security agents on the DPU operate in a separate trust domain. A rootkit on the host cannot tamper with code running on the DPU.
+The DPU runs independently with its own CPU, memory, and firmware. It provides the verification signal that automation needs without trusting the host to report its own state. Modern rootkits using io_uring [operate entirely outside the syscall layer](https://www.armosec.io/blog/io_uring-rootkit-bypasses-linux-security/), invisible to host-based security tools. The DPU sidesteps this problem entirely.
 
-## How Does This Change Incident Response?
+## What Happens When Something Goes Wrong?
 
-**Traditional:** Incident response starts with questions. What credentials were on that system? Which service accounts had access? You rotate secrets fleet-wide because you can't be certain what was exposed. Every system sharing credentials with the compromised host is potentially affected.
+**Traditional:** Incident response starts with questions. What credentials were on that system? You rotate secrets fleet-wide because you can't be certain what was exposed. Days of manual work.
 
-**Hardware-attested:** Credentials on that host were bound to that host's hardware. They cannot be extracted or used from another system. New credential distribution stopped when attestation failed. Blast radius is contained to that specific host during the compromise window. No credential rotation fire drill.
+**Automated:** You query the audit log. Here's every credential that reached that node, when, and the attestation state at that moment. Distribution stopped automatically when attestation failed. No rotation fire drill because credentials are short-lived anyway.
 
-GPU clusters hold model weights worth hundreds of millions. Training runs process proprietary data. When incidents happen, the difference between "rotate everything" and "contained to one host" is the difference between a fire drill and a measured response.
+GPU clusters hold model weights worth hundreds of millions. When incidents happen, the difference between "rotate everything manually" and "query the log, credentials already expired" is the difference between a fire drill and a measured response.
 
 ---
 
-*Secure Infrastructure binds credentials to hardware so they can't be extracted, even by root. See the [quickstart guide](https://github.com/gobeyondidentity/secure-infra/blob/main/docs/guides/quickstart-emulator.md) to try it.*
+*Secure Infrastructure automates credential distribution to verified GPU infrastructure. No manual key management. No rotation fire drills. See the [quickstart guide](https://github.com/gobeyondidentity/secure-infra/blob/main/docs/guides/quickstart-emulator.md) to try it.*

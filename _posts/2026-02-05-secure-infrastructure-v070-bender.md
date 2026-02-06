@@ -5,42 +5,60 @@ date: 2026-02-05
 author: Beyond Identity
 ---
 
-Project Cobalt's second minor release ships the entire Nexus API Authentication epic: five phases that transform the control plane from unauthenticated HTTP endpoints into a fully attestation-gated, policy-driven system. Every API call now proves caller identity through hardware-bound cryptography, every authorization decision runs through auditable Cedar policies, and every security event flows to your SIEM.
+Bender ships the complete authentication and authorization stack for the Cobalt control plane. Every API call now requires cryptographic proof of caller identity. Authorization decisions run through auditable Cedar policies. Identity lifecycle management gives you instant incident response. And every security event flows to your SIEM.
 
-## DPoP Authentication (Phase 1)
+## Every API Call Proves Identity
 
-All nexus API traffic now requires DPoP (Demonstrating Proof of Possession, RFC 9449) authentication. Each request carries an Ed25519-signed JWT that binds the caller's private key to the specific HTTP method, URI, and timestamp. The server runs a 10-step validation pipeline: parse the proof, verify the typ/alg headers, look up the public key by `kid`, verify the Ed25519 signature, check freshness within a 60-second window, confirm method and URI binding, reject replayed `jti` values, and verify the caller's identity status. Stolen tokens are useless without the signing key. Replayed proofs are caught by the jti cache. There is no fallback to unauthenticated access.
+All API traffic now requires cryptographic proof of possession. Each request is signed with a hardware-bound Ed25519 key tied to the specific HTTP method, URI, and timestamp. Stolen tokens are useless without the private key. Replayed requests are rejected automatically. There is no fallback to unauthenticated access.
 
-## Challenge-Response Enrollment (Phase 2)
+This replaces bearer tokens entirely. Your security team no longer needs to worry about token theft leading to API compromise. The caller proves they hold the key on every request.
 
-Identity establishment uses a two-phase challenge-response protocol that prevents key substitution attacks. On init, the server issues a 32-byte cryptographic challenge with a 5-minute TTL. On complete, the caller proves private key possession by signing that challenge. Invite codes are SHA-256 hashed at rest, single-use, and time-limited to one hour. DPU enrollment adds DICE chain verification: the server validates that the device's hardware serial matches the claim token before accepting enrollment. The bootstrap flow for the first administrator locks automatically after the first successful enrollment and persists across server restarts.
+## Enrollment Resists Key Substitution
 
-## Cedar Authorization with Attestation Gating (Phase 3)
+Operator and DPU enrollment now use challenge-response protocols. The server issues a cryptographic challenge; the caller proves key possession by signing it. Invite codes are single-use and time-limited. DPU enrollment adds a hardware verification step: the server validates the device's hardware serial against its claim token before accepting enrollment.
 
-Authorization decisions run through AWS Cedar, a policy language that produces auditable, declarative access control. Three roles govern the system: `operator` (scoped to explicit per-resource grants), `tenant:admin` (all resources within their tenant), and `super:admin` (global cross-tenant access). Deny-by-default means unknown actions fail closed.
+The first administrator bootstrap locks automatically after initial setup and persists across restarts. No configuration drift. No accidental re-enrollment.
 
-The attestation gate is the security boundary that distinguishes Cobalt from conventional identity systems. Credential distribution requires verified DPU attestation. If attestation is stale or unavailable, the operation is blocked. If attestation has failed, the operation is blocked permanently with no bypass path. For stale/unavailable states, a `super:admin` can force-bypass with a mandatory reason header that generates a SECURITY_WARNING audit event. The staleness threshold is configurable via `--attestation-stale-after`.
+## Authorization Gates on Attestation
 
-## Lifecycle Management (Phase 4)
+Authorization runs through Cedar policies with deny-by-default enforcement. Three roles govern access: operators get explicit per-resource grants, tenant admins operate within their tenant boundary, and super admins have cross-tenant access for break-glass scenarios.
 
-Identities now have proper lifecycles with an immediate-effect guarantee: status is checked on every request via a direct database read in DPoP validation step 10. No caching, no propagation delay.
+The critical differentiator: credential distribution requires verified DPU attestation. If a node's attestation is stale or unavailable, credential operations block. If attestation has failed, operations block permanently with no bypass path. A super admin can force-bypass for stale attestation, but that action generates a security warning in the audit log. There is no silent override.
 
-**Operator suspension** is reversible and blocks all KeyMakers owned by the operator instantly. Useful for incident response where you need to lock someone out while investigating without destroying their enrollment.
+This is the enforcement layer that separates Cobalt from conventional identity systems. Credentials don't reach infrastructure that can't prove it's in a known-good state.
 
-**KeyMaker and AdminKey revocation** is permanent and irrecoverable. Once revoked, the key is terminal. Self-revocation is prevented.
+## Incident Response in Seconds, Not Hours
 
-**DPU decommissioning** blocks authentication and scrubs associated credentials from nexus. The record is retained for audit. A `super:admin` can re-activate a decommissioned DPU, which resets it to pending status and opens a fresh enrollment window.
+When something goes wrong, you need to act immediately. Bender gives you three response tools:
 
-Last-key protection prevents accidentally revoking the only remaining admin key, which would lock you out of the system entirely.
+**Suspend an operator.** Reversible. Blocks all their keys instantly. Use this when you're investigating and need to lock someone out without destroying their enrollment. Lift the suspension when the investigation clears them.
 
-## RFC 5424 Audit Logging (Phase 5)
+**Revoke a key.** Permanent. The key is terminal. No reactivation path. Use this when a key is confirmed compromised. Self-revocation is prevented, and last-key protection stops you from accidentally locking yourself out of the system.
 
-Security events now write to the local syslog daemon in RFC 5424 structured data format, parseable by Grafana Loki, Splunk, and any standards-compliant SIEM. Auth success/failure, enrollment, lifecycle actions, and attestation bypasses all generate structured events with `kid`, client IP, request path, and latency. This runs alongside the existing SQLite audit storage (used by `bluectl audit` queries), so you get both local queryability and SIEM integration.
+**Decommission a DPU.** Blocks authentication and scrubs associated credentials from the control plane. The audit record is retained. If the device is later cleared, a super admin can re-activate it, which resets to pending status and opens a fresh enrollment window.
 
-The syslog writer carries zero external dependencies. Socket reconnection uses exponential backoff. A no-secrets regression test validates that private keys, DPoP proofs, and invite codes never appear in log output.
+All three take effect on the next API call. No propagation delay. No cache to expire.
 
-## What This Means
+## Audit Logs in Your SIEM
 
-Bender v0.7.0 closes the gap between "working prototype" and "system you can put in front of a security team." The entire authentication and authorization stack is now enforced, auditable, and built on cryptographic proof rather than bearer tokens. If you are evaluating hardware-enforced credential management for GPU infrastructure, this is the release to start with.
+Security events now write to syslog in RFC 5424 structured format. Grafana Loki, Splunk, and any standards-compliant SIEM can ingest them directly. Auth success and failure, enrollment events, lifecycle actions, and attestation bypasses all generate structured events with caller identity, client IP, request path, and latency.
 
-Bender is available now via Homebrew (`brew install gobeyondidentity/cobalt/bluectl`), Docker, and Linux packages. Source and full changelog on [GitHub](https://github.com/gobeyondidentity/cobalt).
+This runs alongside the existing local audit storage used for CLI queries, so you get both operational queryability and SIEM integration. A regression test validates that private keys and credentials never appear in log output.
+
+## What Changed for Your Security Posture
+
+With Bender, the full security stack is in place. Every identity is challenge-response enrolled. Every API call is cryptographically signed. Every authorization decision is policy-driven with attestation gating. Every security event is auditable.
+
+If you're evaluating hardware-enforced credential management for GPU infrastructure, this is the release to start with.
+
+## Get Started
+
+```bash
+brew install gobeyondidentity/cobalt/bluectl
+```
+
+Also available via Docker and Linux packages. Source and full changelog on [GitHub](https://github.com/gobeyondidentity/cobalt).
+
+---
+
+*Secure Infrastructure v0.7.0 "Bender" - February 2026*
